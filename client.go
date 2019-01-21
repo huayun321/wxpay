@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -190,6 +191,31 @@ func (c *Client) processResponseXml(xmlStr string) (Params, error) {
 	}
 }
 
+// 处理 HTTPS API返回数据，转换成Map对象。return_code为SUCCESS时，验证签名。
+func (c *Client) HprocessResponseXml(xmlStr string) (Params, error) {
+	log.Println("processResponseXml")
+	var status string
+	params := XmlToMap(xmlStr)
+	log.Println("processResponseXml params: ", params)
+	log.Println("processResponseXml status: ", params.GetString("status"))
+	if params.ContainsKey("status") {
+		status = params.GetString("status")
+	} else {
+		return nil, errors.New("no status in XML")
+	}
+	if status != "0" {
+		return params, nil
+	} else if status == "0" {
+		if c.ValidSign(params) {
+			return params, nil
+		} else {
+			return nil, errors.New("invalid sign value in XML")
+		}
+	} else {
+		return nil, errors.New("return_code value is invalid in XML")
+	}
+}
+
 // 统一下单
 func (c *Client) UnifiedOrder(params Params) (Params, error) {
 	var url string
@@ -203,6 +229,22 @@ func (c *Client) UnifiedOrder(params Params) (Params, error) {
 		return nil, err
 	}
 	return c.processResponseXml(xmlStr)
+}
+
+// 统一下单
+func (c *Client) HUnifiedOrder(params Params) (Params, error) {
+	var url string
+	if c.account.isSandbox {
+		url = SandboxUnifiedOrderUrl
+	} else {
+		url = "https://gateway.wepayez.com/pay/gateway"
+	}
+	xmlStr, err := c.postWithoutCert(url, params)
+	if err != nil {
+		return nil, err
+	}
+	log.Println(xmlStr)
+	return c.HprocessResponseXml(xmlStr)
 }
 
 // 刷卡支付
@@ -235,6 +277,21 @@ func (c *Client) Refund(params Params) (Params, error) {
 	return c.processResponseXml(xmlStr)
 }
 
+// 退款
+func (c *Client) HRefund(params Params) (Params, error) {
+	var url string
+	if c.account.isSandbox {
+		url = SandboxRefundUrl
+	} else {
+		url = "https://gateway.wepayez.com/pay/gateway"
+	}
+	xmlStr, err := c.postWithoutCert(url, params)
+	if err != nil {
+		return nil, err
+	}
+	return c.HprocessResponseXml(xmlStr)
+}
+
 // 订单查询
 func (c *Client) OrderQuery(params Params) (Params, error) {
 	var url string
@@ -248,6 +305,23 @@ func (c *Client) OrderQuery(params Params) (Params, error) {
 		return nil, err
 	}
 	return c.processResponseXml(xmlStr)
+}
+
+// 订单查询
+func (c *Client) HOrderQuery(params Params) (Params, error) {
+	var url string
+	if c.account.isSandbox {
+		url = SandboxOrderQueryUrl
+	} else {
+		url = "https://gateway.wepayez.com/pay/gateway"
+	}
+	log.Println("HOrderQuery params: ", params)
+	xmlStr, err := c.postWithoutCert(url, params)
+	if err != nil {
+		return nil, err
+	}
+	log.Println("HOrderQuery xmlStr :", xmlStr)
+	return c.HprocessResponseXml(xmlStr)
 }
 
 // 退款查询
